@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="12120" systemVersion="16E195" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+    <device id="retina4_7" orientation="portrait">
+        <adaptation id="fullscreen"/>
+    </device>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="12088"/>
+        <capability name="Constraints with non-1.0 multipliers" minToolsVersion="5.1"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="tne-QT-ifu">
+            <objects>
+                <viewController id="BYZ-38-t0r" customClass="ViewController" sceneMemberID="viewController">
+                    <layoutGuides>
+                        <viewControllerLayoutGuide type="top" id="y3c-jy-aDJ"/>
+                        <viewControllerLayoutGuide type="bottom" id="wfy-db-euE"/>
+                    </layoutGuides>
+                    <view key="view" contentMode="scaleToFill" id="8bC-Xf-vdC">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="olX-Hi-3be">
+                                <rect key="frame" x="22" y="51.5" width="106" height="30"/>
+                                <state key="normal" title="change camera"/>
+                                <connections>
+                                    <action selector="changeCamera:" destination="BYZ-38-t0r" eventType="touchUpInside" id="iEd-2K-FFW"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="0fY-UF-jex">
+                                <rect key="frame" x="147.5" y="95" width="80" height="30"/>
+                                <state key="normal" title="start runing"/>
+                                <connections>
+                                    <action selector="startRuning:" destination="BYZ-38-t0r" eventType="touchUpInside" id="VwH-vG-YkM"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="zbd-Qw-rJG">
+                                <rect key="frame" x="150.5" y="205" width="74" height="30"/>
+                                <state key="normal" title="end runing"/>
+                                <connections>
+                                    <action selector="endRuning:" destination="BYZ-38-t0r" eventType="touchUpInside" id="qTG-iX-bTG"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="6N1-li-yxz">
+                                <rect key="frame" x="147" y="318.5" width="81" height="30"/>
+                                <state key="normal" title="start record"/>
+                                <connections>
+                                    <action selector="startRecord:" destination="BYZ-38-t0r" eventType="touchUpInside" id="hB1-fq-Xi0"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="f6H-uB-Maq">
+                                <rect key="frame" x="150" y="428.5" width="75" height="30"/>
+                                <state key="normal" title="end record"/>
+                                <connections>
+                                    <action selector="endRecord:" destination="BYZ-38-t0r" eventType="touchUpInside" id="THM-ec-szS"/>
+                                </connections>
+                            </button>
+                            <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="MYR-o7-HsZ">
+                                <rect key="frame" x="165.5" y="538.5" width="44" height="30"/>
+                                <state key="normal" title="merge"/>
+                                <connections>
+                                    <action selector="merge:" destination="BYZ-38-t0r" eventType="touchUpInside" id="00V-ed-n5m"/>
+                                </connections>
+                            </button>
+                        </subviews>
+                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="0fY-UF-jex" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="ABo-x8-Vqd"/>
+                            <constraint firstItem="f6H-uB-Maq" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" multiplier="1.33" id="Ike-79-Gxs"/>
+                            <constraint firstItem="olX-Hi-3be" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" multiplier="0.4" id="OfB-YP-SVf"/>
+                            <constraint firstItem="0fY-UF-jex" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" multiplier="0.33" id="WOy-t5-ERB"/>
+                            <constraint firstItem="zbd-Qw-rJG" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" multiplier="0.66" id="Whg-oW-ha3"/>
+                            <constraint firstItem="6N1-li-yxz" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" id="Y4z-ea-Ry5"/>
+                            <constraint firstItem="f6H-uB-Maq" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="ZoV-pX-d7Z"/>
+                            <constraint firstItem="MYR-o7-HsZ" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" multiplier="1.66" id="fpd-wu-yE1"/>
+                            <constraint firstItem="6N1-li-yxz" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="fsg-mW-M9C"/>
+                            <constraint firstItem="olX-Hi-3be" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" multiplier="0.2" id="k4u-WN-9hE"/>
+                            <constraint firstItem="zbd-Qw-rJG" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="yZM-f7-YKG"/>
+                            <constraint firstItem="MYR-o7-HsZ" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="yne-IW-sM4"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="140" y="138.98050974512745"/>
+        </scene>
+    </scenes>
+</document>
