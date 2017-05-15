@@ -35,6 +35,7 @@
 
 #define ScreenShort MIN([UIScreen mainScreen].bounds.size.height, [UIScreen mainScreen].bounds.size.width)
 #define ScreenLong  MAX([UIScreen mainScreen].bounds.size.height, [UIScreen mainScreen].bounds.size.width)
+#define SystemAdvanceThan8 ([[UIDevice currentDevice].systemVersion floatValue] >= 8.0)
 
 
 #define PerformProcessError($process, $describe) \
@@ -94,6 +95,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 
 @interface FEVideoCaptureView () <AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate>
 {
+    BOOL _readyToRun;
     BOOL _writing;
     BOOL _audioCanAppend;
     BOOL _changingCamera;
@@ -109,9 +111,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     dispatch_queue_t _audioQueue;
 }
 
-#ifndef __IPHONE_8_0
 @property (nonatomic, strong) ALAssetsLibrary *library;
-#endif
 
 @property (nonatomic, strong) AVCaptureSession *session;
 @property (nonatomic, strong) AVCaptureDeviceInput *videoInput;
@@ -132,7 +132,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 #pragma mark - File
 - (void)createFileDirectory {
     [self removeFileDirecotry];
-    _timeline = [NSDate date].description;
+    _timeline = [NSString stringWithFormat:@"%.0f", [[NSDate date] timeIntervalSince1970]];
     [[NSFileManager defaultManager] createDirectoryAtPath:TempRecordDirectory
                               withIntermediateDirectories:NO attributes:nil error:nil];
     
@@ -172,9 +172,8 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 }
 
 - (void)initSelf {
-#ifndef __IPHONE_8_0
     _library = [ALAssetsLibrary new];
-#endif
+
     _videoQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0);
     _audioQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0);
     _recordPathAry = [NSMutableArray new];
@@ -211,13 +210,16 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         case AVAuthorizationStatusNotDetermined:
             NSLog(@"若无法弹出相机权限许可对话框, 请检查项目设置");
             [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
-                AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-                if (!granted) {
-                    PerformProcessError(FEVideoCapture_Process_CameraAuthorize, @"没有相机权限, 不能开启小视频录制功能喔")
-                }
-                if (granted && status == AVAuthorizationStatusAuthorized) {
-                    [self initCaptureSession];
-                }
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+                    if (!granted) {
+                        PerformProcessError(FEVideoCapture_Process_CameraAuthorize,
+                                            @"没有相机权限, 不能开启小视频录制功能喔")
+                    }
+                    if (granted && status == AVAuthorizationStatusAuthorized) {
+                        [self initCaptureSession];
+                    }
+                });
             }];
             break;
     }
@@ -232,13 +234,16 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         case AVAuthorizationStatusNotDetermined:
             NSLog(@"若无法弹出麦克风权限许可对话框, 请检查项目设置");
             [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
-                AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
-                if (!granted) {
-                    PerformProcessError(FEVideoCapture_Process_MicroPhoneAuthorize, @"没有麦克风权限, 不能开启小视频录制功能喔")
-                }
-                if (granted && status == AVAuthorizationStatusAuthorized) {
-                    [self initCaptureSession];
-                }
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+                    if (!granted && status == AVAuthorizationStatusAuthorized) {
+                        PerformProcessError(FEVideoCapture_Process_MicroPhoneAuthorize,
+                                            @"没有麦克风权限, 不能开启小视频录制功能喔")
+                    }
+                    if (granted && status == AVAuthorizationStatusAuthorized) {
+                        [self initCaptureSession];
+                    }
+                });
             }];
             break;
     }
@@ -318,6 +323,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 
 #pragma mark - Session
 - (void)initCaptureSession {
+    _readyToRun = NO;
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         _session = [AVCaptureSession new];
         _session.sessionPreset = AVCaptureSessionPresetHigh;
@@ -337,6 +343,8 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
             _previewLayer.frame = CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height);
             _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
             [self.layer addSublayer:_previewLayer];
+            
+            _readyToRun = YES;
             PerformSessionFinishInit
         });
     });
@@ -497,7 +505,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     FEVideoCaptureInfo *videoData = [FEVideoCaptureInfo new];
     videoData.thumbnail = thumbnail;
     videoData.videoDuration = videoTotalDuration.value / videoTotalDuration.timescale;
-    videoData.videoUrl = [NSURL fileURLWithPath:TemRecordMergePath];
+    videoData.videoPath = TemRecordMergePath;
     
     AVAssetExportSession *export = [[AVAssetExportSession alloc] initWithAsset:mixComposition
                                                                     presetName:_exportPreset];
@@ -509,7 +517,9 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         switch (export.status) {
             case AVAssetExportSessionStatusCompleted: {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [self saveToPhoto];
+                    if ([_recordPathAry.firstObject hasPrefix:TempRecordDirectory]) {
+                        [self saveToPhoto];
+                    }
                     PerformCombineResult(videoData)
                     SafetyCallblock(complete)
                 });
@@ -527,63 +537,66 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 }
 
 - (void)saveToPhoto {
-#ifdef __IPHONE_8_0
-    switch ([PHPhotoLibrary authorizationStatus]) {
-        case PHAuthorizationStatusNotDetermined: {
-            NSLog(@"若无法弹出相册权限许可对话框, 请检查项目设置");
-            [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-                if (status == PHAuthorizationStatusAuthorized) {
-                    [self saveToPhoto];
-                } else {
-                    PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
-                }
-            }];
-            return;
-        }
-        case PHAuthorizationStatusRestricted:
-        case PHAuthorizationStatusDenied:
-            PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
-            return;
-        default:
-            break;
-    }
     
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:TemRecordMergePath]];
-    } completionHandler:^(BOOL success, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (error) {
-                PerformProcessError(FEVideoCapture_Process_SaveToPhoto,
-                                    [error localizedDescription])
+    if (SystemAdvanceThan8) {
+        
+        switch ([PHPhotoLibrary authorizationStatus]) {
+            case PHAuthorizationStatusNotDetermined: {
+                NSLog(@"若无法弹出相册权限许可对话框, 请检查项目设置");
+                [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
+                    if (status == PHAuthorizationStatusAuthorized) {
+                        [self saveToPhoto];
+                    } else {
+                        PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
+                    }
+                }];
+                return;
             }
-            PerformSaveToPhotoResult(@(error == nil))
-        });
-    }];
-    
-#else
-    switch ([ALAssetsLibrary authorizationStatus]) {
-        case ALAuthorizationStatusNotDetermined:
-             NSLog(@"若无法弹出相册权限许可对话框, 请检查项目设置");
-        case ALAuthorizationStatusRestricted:
-        case ALAuthorizationStatusDenied:
-            PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
-            return;
-        case ALAuthorizationStatusAuthorized:
-            break;
+            case PHAuthorizationStatusRestricted:
+            case PHAuthorizationStatusDenied:
+                PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
+                return;
+            default:
+                break;
+        }
+        
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:TemRecordMergePath]];
+        } completionHandler:^(BOOL success, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (error) {
+                    PerformProcessError(FEVideoCapture_Process_SaveToPhoto,
+                                        [error localizedDescription])
+                }
+                PerformSaveToPhotoResult(@(error == nil))
+            });
+        }];
+        
+    } else {
+        
+//        switch ([ALAssetsLibrary authorizationStatus]) {
+//            case ALAuthorizationStatusNotDetermined:
+//                NSLog(@"若无法弹出相册权限许可对话框, 请检查项目设置");
+//            case ALAuthorizationStatusRestricted:
+//            case ALAuthorizationStatusDenied:
+//                PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
+//                return;
+//            case ALAuthorizationStatusAuthorized:
+//                break;
+//        }
+        
+        [_library writeVideoAtPathToSavedPhotosAlbum:[NSURL fileURLWithPath:TemRecordMergePath] completionBlock:
+         ^(NSURL *url, NSError *error)
+         {
+             dispatch_async(dispatch_get_main_queue(), ^{
+                 if (error) {
+                     PerformProcessError(FEVideoCapture_Process_SaveToPhoto,
+                                         [error localizedDescription])
+                 }
+                 PerformSaveToPhotoResult(@(error == nil))
+             });
+         }];
     }
-    
-    [_library writeVideoAtPathToSavedPhotosAlbum:[NSURL fileURLWithPath:TemRecordMergePath] completionBlock:
-     ^(NSURL *url, NSError *error)
-     {
-         dispatch_async(dispatch_get_main_queue(), ^{
-             if (error) {
-                 PerformProcessError(FEVideoCapture_Process_SaveToPhoto,
-                                     [error localizedDescription])
-             }
-             PerformSaveToPhotoResult(@(error == nil))
-         });
-     }];
-#endif
 }
 
 #pragma mark - AVCaptureAudioDataOutputSampleBufferDelegate & AVCaptureVideoDataOutputSampleBufferDelegate
@@ -622,7 +635,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 #pragma mark - Public Method
 - (void)startRuning {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        if (_session && !_session.isRunning) {
+        if (_session && !_session.isRunning && _readyToRun) {
             [_session startRunning];
             dispatch_async(dispatch_get_main_queue(), ^{
                 _previewLayer.hidden = NO;
@@ -689,8 +702,9 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     [self endWriting];
 }
 
-- (void)loadVideoFragment:(NSString *)videoPath {
+- (void)loadVideoFragment:(NSString *)videoPath completion:(void(^)())complete{
     [_recordPathAry insertObject:videoPath atIndex:0];
+    [self combineAllVideoFragment:complete];
 }
 
 - (void)deleteLastFragment {

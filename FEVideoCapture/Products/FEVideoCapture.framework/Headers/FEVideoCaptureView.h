@@ -28,7 +28,7 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 
 @property (nonatomic) NSTimeInterval videoDuration; //Sec.
 @property (nonatomic, strong) UIImage *thumbnail;
-@property (nonatomic, strong) NSURL *videoUrl;
+@property (nonatomic, strong) NSString *videoPath;
 
 @end
 
@@ -66,7 +66,7 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 - (void)stopRecord;
 
 - (void)deleteLastFragment;
-- (void)loadVideoFragment:(NSString *)videoPath;
+- (void)loadVideoFragment:(NSString *)videoPath completion:(void(^)())complete;
 
 - (void)changeCamera:(void(^)())complete;
 - (void)combineAllVideoFragment:(void(^)())complete;

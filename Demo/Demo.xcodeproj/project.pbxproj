@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		9894648C1EB9B7DF0052A2CE /* FEVideoCapture.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9894648B1EB9B7DF0052A2CE /* FEVideoCapture.framework */; };
+		9899E26D1EC9AB300055908D /* FEVideoCapture.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9899E26C1EC9AB300055908D /* FEVideoCapture.framework */; };
 		98AD92781EB9831700CE4EB7 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 98AD92771EB9831700CE4EB7 /* main.m */; };
 		98AD927B1EB9831700CE4EB7 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 98AD927A1EB9831700CE4EB7 /* AppDelegate.m */; };
 		98AD927E1EB9831700CE4EB7 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 98AD927D1EB9831700CE4EB7 /* ViewController.m */; };
@@ -17,7 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		9894648B1EB9B7DF0052A2CE /* FEVideoCapture.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = FEVideoCapture.framework; sourceTree = "<group>"; };
+		9899E26C1EC9AB300055908D /* FEVideoCapture.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = FEVideoCapture.framework; sourceTree = "<group>"; };
 		98AD92731EB9831700CE4EB7 /* Demo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Demo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		98AD92771EB9831700CE4EB7 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		98AD92791EB9831700CE4EB7 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
@@ -35,7 +35,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9894648C1EB9B7DF0052A2CE /* FEVideoCapture.framework in Frameworks */,
+				9899E26D1EC9AB300055908D /* FEVideoCapture.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,7 +69,7 @@
 				98AD92821EB9831700CE4EB7 /* Assets.xcassets */,
 				98AD92841EB9831700CE4EB7 /* LaunchScreen.storyboard */,
 				98AD92871EB9831700CE4EB7 /* Info.plist */,
-				9894648B1EB9B7DF0052A2CE /* FEVideoCapture.framework */,
+				9899E26C1EC9AB300055908D /* FEVideoCapture.framework */,
 				98AD92761EB9831700CE4EB7 /* Supporting Files */,
 			);
 			path = Demo;
