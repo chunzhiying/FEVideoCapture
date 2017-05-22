@@ -33,6 +33,9 @@
 
 #define SafetyCallblock(block, ...) if((block)) { block(__VA_ARGS__); }
 
+#define Delay(sec, block) \
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(sec * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
+
 #define ScreenShort MIN([UIScreen mainScreen].bounds.size.height, [UIScreen mainScreen].bounds.size.width)
 #define ScreenLong  MAX([UIScreen mainScreen].bounds.size.height, [UIScreen mainScreen].bounds.size.width)
 #define SystemAdvanceThan8 ([[UIDevice currentDevice].systemVersion floatValue] >= 8.0)
@@ -58,6 +61,9 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     [self.delegate performSelector:@selector(sessionFinishInitForVideoCaptureView:) withObject:self]; \
 }
 
+@implementation FEVideoWaterMark
+
+@end
 
 @implementation FEVideoCaptureInfo
 
@@ -100,9 +106,10 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     BOOL _audioCanAppend;
     BOOL _changingCamera;
     
+    CGSize _videoSize;
+    
     NSString *_timeline;
     AVCaptureDevicePosition _cameraPosition;
-    AVCaptureVideoOrientation _videoOrientation;
     NSMutableArray<NSString *> *_recordPathAry;
     
     FEVideoCaptureFocusLayer *_focusLayer;
@@ -123,6 +130,8 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 @property (nonatomic, strong) AVAssetWriter *assetWriter;
 @property (nonatomic, strong) AVAssetWriterInput *videoWriter;
 @property (nonatomic, strong) AVAssetWriterInput *audioWriter;
+
+@property (nonatomic) AVCaptureVideoOrientation videoOrientation;
 
 @end
 
@@ -277,7 +286,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 - (void)resetOrientation {
     NSArray *connections = [_videoOutput connections];
     for (AVCaptureConnection *connection in connections) {
-        connection.videoOrientation = _videoOrientation;
+        connection.videoOrientation = self.videoOrientation;
     }
 }
 
@@ -288,6 +297,25 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
                                                              color:_focusColor];
     [_focusLayer runAnimation];
     [self.layer addSublayer:_focusLayer];
+}
+
+#pragma mark - Setter
+- (void)setVideoOrientation:(AVCaptureVideoOrientation)videoOrientation {
+    _videoOrientation = videoOrientation;
+    
+    BOOL isPortrait = videoOrientation == AVCaptureVideoOrientationPortrait
+                    || videoOrientation == AVCaptureVideoOrientationPortraitUpsideDown;
+    
+    int videoWidth = ScreenShort;
+    int videoHeight = ScreenLong;
+    
+    videoWidth = videoWidth % 2 == 0 ? videoWidth : videoWidth + 1;
+    videoHeight = videoHeight % 2 == 0 ? videoHeight : videoHeight + 1;
+    
+    NSInteger width = isPortrait ? videoWidth : videoHeight;
+    NSInteger height = isPortrait ? videoHeight : videoWidth;
+
+    _videoSize = CGSizeMake(width, height);
 }
 
 #pragma mark - Action
@@ -329,7 +357,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         _session.sessionPreset = AVCaptureSessionPresetHigh;
         
         _cameraPosition = AVCaptureDevicePositionBack;
-        _videoOrientation = AVCaptureVideoOrientationPortrait;
+        self.videoOrientation = AVCaptureVideoOrientationPortrait;
         
         [_session beginConfiguration];
         [self initVideo];
@@ -404,24 +432,23 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     }
     
     if ([path isEqualToString:_recordPathAry.firstObject]) {
-        _videoOrientation = [self currentOrientation];
+        self.videoOrientation = [self currentOrientation];
         [self resetOrientation];
+        Delay(0.2, ^{
+            [self startWriting];
+        });
+    
+    } else {
+        [self startWriting];
     }
-    
-    AVCaptureVideoOrientation orientation = _videoOrientation;
-    BOOL isPortrait = orientation == AVCaptureVideoOrientationPortrait
-    || orientation == AVCaptureVideoOrientationPortraitUpsideDown;
-    
-    NSInteger videoWidth = (int)ScreenShort % 2 == 0 ? ScreenShort : ScreenShort + 1;
-    NSInteger videoHeight = (int)ScreenLong % 2 == 0 ? ScreenLong : ScreenLong + 1;
-    
-    NSInteger width = isPortrait ? videoWidth : videoHeight;
-    NSInteger height = isPortrait ? videoHeight : videoWidth;
+}
+
+- (void)startWriting {
     
     _videoWriter = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
                                                   outputSettings:@{AVVideoCodecKey : AVVideoCodecH264,
-                                                                   AVVideoWidthKey : @(width),
-                                                                   AVVideoHeightKey : @(height)}];
+                                                                   AVVideoWidthKey : @(_videoSize.width),
+                                                                   AVVideoHeightKey : @(_videoSize.height)}];
     _videoWriter.expectsMediaDataInRealTime = YES;
     
     NSDictionary *audioSettings = [_audioOutput recommendedAudioSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4];
@@ -489,11 +516,17 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         [videoTrack insertTimeRange:videoRange ofTrack:assetVideoTrack atTime:videoTotalDuration error:&videoError];
         [audioTrack insertTimeRange:audioRange ofTrack:assetAudioTrack atTime:audioTotalDuration error:&audioError];
         
-        if (videoError || audioError) {
+        if (audioError) {
+            PerformProcessError(FEVideoCapture_Process_ReadFragment, @"音轨读取出错!")
+            SafetyCallblock(complete)
+            return;
+        }
+        if (videoError) {
             PerformProcessError(FEVideoCapture_Process_ReadFragment, @"视频片段读取出错!")
             SafetyCallblock(complete)
             return;
         }
+        
         if ([videoPath isEqualToString:_recordPathAry.firstObject]) {
             thumbnail = [asset getThumbnail];
         }
@@ -507,33 +540,109 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     videoData.videoDuration = videoTotalDuration.value / videoTotalDuration.timescale;
     videoData.videoPath = TemRecordMergePath;
     
+    AVMutableVideoCompositionLayerInstruction *videolayerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:videoTrack];
+    [videolayerInstruction setOpacity:0.0 atTime:videoTotalDuration];
+    
+    AVMutableVideoCompositionInstruction *mainInstruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
+    mainInstruction.timeRange = CMTimeRangeMake(kCMTimeZero, videoTotalDuration);
+    mainInstruction.layerInstructions = @[videolayerInstruction];
+    
+    AVMutableVideoComposition *videoComposition = [AVMutableVideoComposition videoComposition];
+    videoComposition.renderSize = mixComposition.naturalSize;
+    videoComposition.frameDuration = CMTimeMake(1, 30);
+    videoComposition.instructions = @[mainInstruction];
+    [self applyVideoEffectsToComposition:videoComposition naturalSize:mixComposition.naturalSize];
+    
+    
+    NSArray *comptiblePresets = [AVAssetExportSession exportPresetsCompatibleWithAsset:mixComposition];
+    
+    if (![comptiblePresets containsObject:_exportPreset]) {
+        _exportPreset = AVAssetExportPresetMediumQuality;
+    }
+    
     AVAssetExportSession *export = [[AVAssetExportSession alloc] initWithAsset:mixComposition
                                                                     presetName:_exportPreset];
-    
     export.outputURL = [NSURL fileURLWithPath:TemRecordMergePath];
     export.outputFileType = AVFileTypeMPEG4;
     export.shouldOptimizeForNetworkUse = YES;
+    export.videoComposition = videoComposition;
+    export.timeRange = CMTimeRangeMake(kCMTimeZero, videoTotalDuration);
+    
     [export exportAsynchronouslyWithCompletionHandler:^{
-        switch (export.status) {
-            case AVAssetExportSessionStatusCompleted: {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if ([_recordPathAry.firstObject hasPrefix:TempRecordDirectory]) {
-                        [self saveToPhoto];
-                    }
-                    PerformCombineResult(videoData)
-                    SafetyCallblock(complete)
-                });
-                break;
-            }
-            default: {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    PerformProcessError(FEVideoCapture_Process_CombineFragment, @"视频片段合成出错!")
-                    SafetyCallblock(complete)
-                });
-                break;
-            }
-        }
+         dispatch_async(dispatch_get_main_queue(), ^{
+             switch (export.status) {
+                 case AVAssetExportSessionStatusCompleted:
+                 {
+                     if ([_recordPathAry.firstObject hasPrefix:TempRecordDirectory] && _shouldSaveToPhoto) {
+                         [self saveToPhoto];
+                     }
+                     videoData.fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:TemRecordMergePath error:nil] fileSize] / (1024.0 * 1024.0);
+                     
+                     SafetyCallblock(complete)
+                     PerformCombineResult(videoData)
+                     break;
+                 }
+                 case AVAssetExportSessionStatusFailed:
+                 case AVAssetExportSessionStatusUnknown:
+                 case AVAssetExportSessionStatusWaiting:
+                 case AVAssetExportSessionStatusCancelled:
+                 case AVAssetExportSessionStatusExporting:
+                 {
+                     NSString *errorReason = export.error.localizedFailureReason;
+                     if (errorReason.length > 0) {
+                         PerformProcessError(FEVideoCapture_Process_CombineFragment, errorReason)
+                     } else {
+                         PerformProcessError(FEVideoCapture_Process_CombineFragment, @"视频片段合成出错!")
+                     }
+                     SafetyCallblock(complete)
+                     break;
+                 }
+             }
+         });
     }];
+}
+
+- (void)applyVideoEffectsToComposition:(AVMutableVideoComposition *)videoComposition naturalSize:(CGSize)naturalSize {
+    
+    if (!_waterMark) {
+        return;
+    }
+    
+    CGPoint beginPosition;
+    switch (_waterMark.position) {
+        case UIRectCornerBottomLeft:
+        case UIRectCornerAllCorners:
+            beginPosition = CGPointMake(_waterMark.padding.x, _waterMark.padding.y);
+            break;
+        case UIRectCornerBottomRight:
+            beginPosition = CGPointMake(naturalSize.width - _waterMark.size.width - _waterMark.padding.x,
+                                        _waterMark.padding.y);
+            break;
+        case UIRectCornerTopLeft:
+            beginPosition = CGPointMake(_waterMark.padding.x,
+                                        naturalSize.height - _waterMark.size.height - _waterMark.padding.y);
+            break;
+        case UIRectCornerTopRight:
+            beginPosition = CGPointMake(naturalSize.width - _waterMark.size.width - _waterMark.padding.x,
+                                        naturalSize.height - _waterMark.size.height - _waterMark.padding.y);
+            break;
+    }
+    
+    CALayer *parentLayer = [CALayer layer];
+    CALayer *videoLayer = [CALayer layer];
+    CALayer *waterMarkLayer = [CALayer layer];
+    
+    parentLayer.frame = CGRectMake(0, 0,  naturalSize.width, naturalSize.height);
+    videoLayer.frame = parentLayer.frame;
+    
+    waterMarkLayer.frame = CGRectMake(beginPosition.x, beginPosition.y,
+                                      _waterMark.size.width, _waterMark.size.height);
+    waterMarkLayer.contents = (__bridge id _Nullable)(_waterMark.image.CGImage);
+    
+    [parentLayer addSublayer:videoLayer];
+    [parentLayer addSublayer:waterMarkLayer];
+    
+    videoComposition.animationTool = [AVVideoCompositionCoreAnimationTool videoCompositionCoreAnimationToolWithPostProcessingAsVideoLayer:videoLayer inLayer:parentLayer];
 }
 
 - (void)saveToPhoto {
@@ -566,7 +675,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (error) {
                     PerformProcessError(FEVideoCapture_Process_SaveToPhoto,
-                                        [error localizedDescription])
+                                        ([NSString stringWithFormat:@"存入相册出错, %@", [error localizedDescription]]))
                 }
                 PerformSaveToPhotoResult(@(error == nil))
             });
@@ -574,16 +683,17 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         
     } else {
         
-//        switch ([ALAssetsLibrary authorizationStatus]) {
-//            case ALAuthorizationStatusNotDetermined:
-//                NSLog(@"若无法弹出相册权限许可对话框, 请检查项目设置");
-//            case ALAuthorizationStatusRestricted:
-//            case ALAuthorizationStatusDenied:
-//                PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
-//                return;
-//            case ALAuthorizationStatusAuthorized:
-//                break;
-//        }
+        switch ([ALAssetsLibrary authorizationStatus]) {
+            case ALAuthorizationStatusNotDetermined:
+                NSLog(@"若无法弹出相册权限许可对话框, 请检查项目设置");
+                break;
+            case ALAuthorizationStatusRestricted:
+            case ALAuthorizationStatusDenied:
+                PerformProcessError(FEVideoCapture_Process_PhotoAuthorize, @"没有相册权限, 不能把视频写入相册")
+                break;
+            case ALAuthorizationStatusAuthorized:
+                break;
+        }
         
         [_library writeVideoAtPathToSavedPhotosAlbum:[NSURL fileURLWithPath:TemRecordMergePath] completionBlock:
          ^(NSURL *url, NSError *error)
@@ -591,7 +701,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
              dispatch_async(dispatch_get_main_queue(), ^{
                  if (error) {
                      PerformProcessError(FEVideoCapture_Process_SaveToPhoto,
-                                         [error localizedDescription])
+                                         ([NSString stringWithFormat:@"存入相册出错, %@", [error localizedDescription]]))
                  }
                  PerformSaveToPhotoResult(@(error == nil))
              });
@@ -634,8 +744,11 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 
 #pragma mark - Public Method
 - (void)startRuning {
+    if (!_readyToRun) {
+        return;
+    }
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        if (_session && !_session.isRunning && _readyToRun) {
+        if (_session && !_session.isRunning) {
             [_session startRunning];
             dispatch_async(dispatch_get_main_queue(), ^{
                 _previewLayer.hidden = NO;
@@ -704,7 +817,10 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 
 - (void)loadVideoFragment:(NSString *)videoPath completion:(void(^)())complete{
     [_recordPathAry insertObject:videoPath atIndex:0];
-    [self combineAllVideoFragment:complete];
+    [self combineAllVideoFragment:^{
+        [_recordPathAry removeAllObjects];
+        SafetyCallblock(complete)
+    }];
 }
 
 - (void)deleteLastFragment {

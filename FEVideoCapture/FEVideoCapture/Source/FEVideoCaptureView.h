@@ -24,9 +24,12 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
     FEVideoCapture_Process_SaveToPhoto, //合成视频写入相册
 };
 
+
+
 @interface FEVideoCaptureInfo : NSObject
 
 @property (nonatomic) NSTimeInterval videoDuration; //Sec.
+@property (nonatomic) CGFloat fileSize; //M
 @property (nonatomic, strong) UIImage *thumbnail;
 @property (nonatomic, strong) NSString *videoPath;
 
@@ -38,6 +41,17 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 @property (nonatomic, copy) NSString *describe;
 
 @end
+
+@interface FEVideoWaterMark : NSObject
+
+@property (nonatomic, strong) UIImage *image;
+@property (nonatomic) UIRectCorner position;
+@property (nonatomic) CGSize size;
+@property (nonatomic) CGPoint padding;
+
+@end
+
+
 
 @protocol FEVideoCaptureDelegate <NSObject>
 
@@ -51,9 +65,14 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 
 @end
 
+
+
 @interface FEVideoCaptureView : UIView
 
+@property (nonatomic) BOOL shouldSaveToPhoto; //default: NO
+
 @property (nonatomic, weak) id<FEVideoCaptureDelegate> delegate;
+@property (nonatomic, strong) FEVideoWaterMark *waterMark; //default: nil
 @property (nonatomic, strong) UIColor *focusColor; //default: White
 @property (nonatomic, copy) NSString *exportPreset; //default: AVAssetExportPresetMediumQuality
 
