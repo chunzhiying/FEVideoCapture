@@ -17,6 +17,10 @@
 
 @implementation FEVideoCaptureFocusLayer
 
++ (CFTimeInterval)animationDuration {
+    return 1.8;
+}
+
 - (instancetype)initWithCenter:(CGPoint)center sideLength:(CGFloat)side color:(UIColor *)color {
     self = [[super class] layer];
     if (self) {
@@ -82,7 +86,7 @@
     
     CAAnimationGroup *group = [CAAnimationGroup animation];
     group.animations = @[scale1, scale2];
-    group.duration = 1.8;
+    group.duration = [FEVideoCaptureFocusLayer animationDuration];
     group.delegate = self;
     
     [self addAnimation:group forKey:nil];

@@ -30,8 +30,9 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 
 @property (nonatomic) NSTimeInterval videoDuration; //Sec.
 @property (nonatomic) CGFloat fileSize; //M
+@property (nonatomic) CGSize videoSize;
 @property (nonatomic, strong) UIImage *thumbnail;
-@property (nonatomic, strong) NSString *videoPath;
+@property (nonatomic, copy) NSString *videoPath;
 
 @end
 
@@ -56,7 +57,8 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 @protocol FEVideoCaptureDelegate <NSObject>
 
 @required
-- (void)sessionFinishInitForVideoCaptureView:(FEVideoCaptureView *)videoCapture;
+- (void)sessionFinishInitForVideoCaptureView:(FEVideoCaptureView *)videoCapture; //ready to preview
+- (void)recordFinishInitForVideoCaptureView:(FEVideoCaptureView *)videoCapture; //ready to record
 - (void)videoCaptureView:(FEVideoCaptureView *)videoCapture combineResult:(FEVideoCaptureInfo *)info;
 - (void)videoCaptureView:(FEVideoCaptureView *)videoCapture processError:(FEVideoCaptureError *)error;
 
@@ -66,6 +68,7 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 @end
 
 
+typedef void(^CompleteBlock)();
 
 @interface FEVideoCaptureView : UIView
 
@@ -87,7 +90,7 @@ typedef NS_ENUM(NSUInteger, FEVideoCaptureProcess) {
 - (void)deleteLastFragment;
 - (void)loadVideoFragment:(NSString *)videoPath completion:(void(^)())complete;
 
-- (void)changeCamera:(void(^)())complete;
-- (void)combineAllVideoFragment:(void(^)())complete;
+- (void)changeCamera:(CompleteBlock)complete;
+- (void)combineAllVideoFragment:(CompleteBlock)complete;
 
 @end

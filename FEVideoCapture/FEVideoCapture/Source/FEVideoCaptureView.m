@@ -8,6 +8,7 @@
 
 #import "FEVideoCaptureView.h"
 #import "FEVideoCaptureFocusLayer.h"
+#import "ATMotionManager.h"
 #import <AVFoundation/AVFoundation.h>
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <Photos/Photos.h>
@@ -24,8 +25,11 @@
 #define TempRecordDirectory \
 [NSString stringWithFormat:@"%@%@%@%@", TempPath, TempRecordPre, @"_TempRecord_", _timeline]
 
+#define TempBeginPath \
+[NSString stringWithFormat:@"%@/record_begin.mp4", TempRecordDirectory]
+
 #define TempRecordPath(atNum) \
-[NSString stringWithFormat:@"%@/record_%lu.mp4", TempRecordDirectory, atNum]
+[NSString stringWithFormat:@"%@/record_%lu.mp4", TempRecordDirectory, (unsigned long)atNum]
 
 #define TemRecordMergePath \
 [NSString stringWithFormat:@"%@/record_merge.mp4", TempRecordDirectory]
@@ -59,6 +63,11 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(videoCaptureVie
 #define PerformSessionFinishInit \
 if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishInitForVideoCaptureView:)]) { \
     [self.delegate performSelector:@selector(sessionFinishInitForVideoCaptureView:) withObject:self]; \
+}
+
+#define PerformRecordFinishInit \
+if (self.delegate && [self.delegate respondsToSelector:@selector(recordFinishInitForVideoCaptureView:)]) { \
+    [self.delegate performSelector:@selector(recordFinishInitForVideoCaptureView:) withObject:self]; \
 }
 
 @implementation FEVideoWaterMark
@@ -107,6 +116,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     BOOL _changingCamera;
     
     CGSize _videoSize;
+    NSTimer *_recordInitTimer;
     
     NSString *_timeline;
     AVCaptureDevicePosition _cameraPosition;
@@ -199,7 +209,11 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 }
 
 - (void)dealloc {
-    [self removeFileDirecotry];
+    [self invalidateTimer];
+    [_session removeInput:_audioInput];
+    [_session removeInput:_videoInput];
+    [_session removeOutput:_audioOutput];
+    [_session removeOutput:_videoOutput];
     [_videoOutput setSampleBufferDelegate:nil queue:dispatch_get_main_queue()];
     [_audioOutput setSampleBufferDelegate:nil queue:dispatch_get_main_queue()];
 }
@@ -271,7 +285,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 }
 
 - (AVCaptureVideoOrientation)currentOrientation {
-    switch ([UIDevice currentDevice].orientation) {
+    switch ([ATMotionManager orientation]) {
         case UIDeviceOrientationLandscapeLeft:
             return AVCaptureVideoOrientationLandscapeRight;
         case UIDeviceOrientationLandscapeRight:
@@ -431,13 +445,12 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         return;
     }
     
-    if ([path isEqualToString:_recordPathAry.firstObject]) {
+    if (_recordPathAry.count > 0 && [path isEqualToString:_recordPathAry.firstObject]) {
         self.videoOrientation = [self currentOrientation];
         [self resetOrientation];
         Delay(0.2, ^{
             [self startWriting];
         });
-    
     } else {
         [self startWriting];
     }
@@ -468,19 +481,26 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     _writing = YES;
 }
 
-- (void)endWriting {
-    if (!_assetWriter) {
-        return;
-    }
+- (void)endWriting:(CompleteBlock)block {
     _writing = NO;
     [_videoOutput setSampleBufferDelegate:nil queue:dispatch_get_main_queue()];
     [_audioOutput setSampleBufferDelegate:nil queue:dispatch_get_main_queue()];
     
+    if (!_assetWriter || _assetWriter.status != AVAssetWriterStatusWriting) {
+        _assetWriter = nil;
+        _audioCanAppend = NO;
+        SafetyCallblock(block)
+        return;
+    }
+    
     [_videoWriter markAsFinished];
     [_audioWriter markAsFinished];
     [_assetWriter finishWritingWithCompletionHandler:^{
-        _assetWriter = nil;
-        _audioCanAppend = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            _assetWriter = nil;
+            _audioCanAppend = NO;
+            SafetyCallblock(block)
+        });
     }];
 }
 
@@ -499,14 +519,16 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     
     CMTime videoTotalDuration = kCMTimeZero;
     CMTime audioTotalDuration = kCMTimeZero;
+    AVAssetTrack *assetVideoTrack = nil;
+    AVAssetTrack *assetAudioTrack = nil;
     UIImage *thumbnail = nil;
     
     for (NSString *videoPath in _recordPathAry) {
         AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:videoPath]
                                                 options:@{AVURLAssetPreferPreciseDurationAndTimingKey : @(YES)}];
         NSError *videoError, *audioError;
-        AVAssetTrack *assetVideoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
-        AVAssetTrack *assetAudioTrack = [[asset tracksWithMediaType:AVMediaTypeAudio] firstObject];
+        assetVideoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+        assetAudioTrack = [[asset tracksWithMediaType:AVMediaTypeAudio] firstObject];
         
         CMTime videoStartTime = CMTimeMake(0, assetVideoTrack.timeRange.duration.timescale);
         CMTime audioStartTime = CMTimeMake(0, assetAudioTrack.timeRange.duration.timescale);
@@ -535,12 +557,15 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
         audioTotalDuration = CMTimeAdd(audioTotalDuration, audioRange.duration);
     }
     
-    FEVideoCaptureInfo *videoData = [FEVideoCaptureInfo new];
-    videoData.thumbnail = thumbnail;
-    videoData.videoDuration = videoTotalDuration.value / videoTotalDuration.timescale;
-    videoData.videoPath = TemRecordMergePath;
+    
+    BOOL isVideoFromPhoto = _recordPathAry.count == 1 && ![_recordPathAry.firstObject hasPrefix:TempRecordDirectory];
+    CGSize renderSize = mixComposition.naturalSize;
+    if (isVideoFromPhoto && [self isVideoAssetPortrait:assetVideoTrack]) {
+        renderSize = CGSizeMake(mixComposition.naturalSize.height, mixComposition.naturalSize.width);
+    }
     
     AVMutableVideoCompositionLayerInstruction *videolayerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:videoTrack];
+    [videolayerInstruction setTransform:assetVideoTrack.preferredTransform atTime:kCMTimeZero];
     [videolayerInstruction setOpacity:0.0 atTime:videoTotalDuration];
     
     AVMutableVideoCompositionInstruction *mainInstruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
@@ -548,10 +573,17 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     mainInstruction.layerInstructions = @[videolayerInstruction];
     
     AVMutableVideoComposition *videoComposition = [AVMutableVideoComposition videoComposition];
-    videoComposition.renderSize = mixComposition.naturalSize;
+    videoComposition.renderSize = renderSize;
     videoComposition.frameDuration = CMTimeMake(1, 30);
     videoComposition.instructions = @[mainInstruction];
     [self applyVideoEffectsToComposition:videoComposition naturalSize:mixComposition.naturalSize];
+    
+    
+    FEVideoCaptureInfo *videoData = [FEVideoCaptureInfo new];
+    videoData.thumbnail = thumbnail;
+    videoData.videoDuration = videoTotalDuration.value / videoTotalDuration.timescale;
+    videoData.videoPath = TemRecordMergePath;
+    videoData.videoSize = renderSize;
     
     
     NSArray *comptiblePresets = [AVAssetExportSession exportPresetsCompatibleWithAsset:mixComposition];
@@ -600,6 +632,22 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
              }
          });
     }];
+}
+
+- (BOOL)isVideoAssetPortrait:(AVAssetTrack *)videoAsset {
+    BOOL  isVideoAssetPortrait_  = NO;
+    CGAffineTransform videoTransform = videoAsset.preferredTransform;
+    
+    if (videoTransform.a == 0 && videoTransform.b == 1.0 && videoTransform.c == -1.0 && videoTransform.d == 0)
+    {isVideoAssetPortrait_ = YES;}
+    if (videoTransform.a == 0 && videoTransform.b == -1.0 && videoTransform.c == 1.0 && videoTransform.d == 0)
+    {isVideoAssetPortrait_ = YES;}
+    if (videoTransform.a == 1.0 && videoTransform.b == 0 && videoTransform.c == 0 && videoTransform.d == 1.0)
+    {isVideoAssetPortrait_ = NO;}
+    if (videoTransform.a == -1.0 && videoTransform.b == 0 && videoTransform.c == 0 && videoTransform.d == -1.0)
+    {isVideoAssetPortrait_ = NO;}
+    
+    return isVideoAssetPortrait_;
 }
 
 - (void)applyVideoEffectsToComposition:(AVMutableVideoComposition *)videoComposition naturalSize:(CGSize)naturalSize {
@@ -742,6 +790,28 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
     }
 }
 
+#pragma mark - Record Init
+- (void)initRecord {
+    if ([[NSFileManager defaultManager] fileExistsAtPath:TempBeginPath]) {
+        return;
+    }
+    [self createWriterToPath:TempBeginPath];
+    _recordInitTimer = [NSTimer scheduledTimerWithTimeInterval:[FEVideoCaptureFocusLayer animationDuration] target:self selector:@selector(finishInitRecord) userInfo:nil repeats:NO];
+}
+
+- (void)finishInitRecord {
+    [self endWriting:^{
+        PerformRecordFinishInit
+    }];
+}
+
+- (void)invalidateTimer {
+    if (_recordInitTimer) {
+        [_recordInitTimer invalidate];
+        _recordInitTimer = nil;
+    }
+}
+
 #pragma mark - Public Method
 - (void)startRuning {
     if (!_readyToRun) {
@@ -753,6 +823,7 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
             dispatch_async(dispatch_get_main_queue(), ^{
                 _previewLayer.hidden = NO;
                 [self setFocusAt:self.layer.position];
+                [self initRecord];
             });
         }
     });
@@ -806,13 +877,14 @@ if (self.delegate && [self.delegate respondsToSelector:@selector(sessionFinishIn
 }
 
 - (void)startRecord {
+    [self invalidateTimer];
     NSString *tempRecordPath = TempRecordPath(_recordPathAry.count);
     [_recordPathAry addObject:tempRecordPath];
     [self createWriterToPath:tempRecordPath];
 }
 
 - (void)stopRecord {
-    [self endWriting];
+    [self endWriting:nil];
 }
 
 - (void)loadVideoFragment:(NSString *)videoPath completion:(void(^)())complete{

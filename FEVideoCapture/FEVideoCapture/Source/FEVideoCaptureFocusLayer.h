@@ -11,6 +11,8 @@
 
 @interface FEVideoCaptureFocusLayer : CAShapeLayer
 
++ (CFTimeInterval)animationDuration;
+
 - (instancetype)initWithCenter:(CGPoint)center sideLength:(CGFloat)side color:(UIColor *)color;
 - (void)runAnimation;
 
